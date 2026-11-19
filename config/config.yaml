@@ -1,0 +1,72 @@
+# ==============================================================================
+# CONFIGURACIÓN DEL MIDDLEWARE STATELESS (POS / SERVIDOR CENTRAL)
+# ==============================================================================
+
+# 1. Identidad de Instalación (Específica de esta máquina)
+identidad:
+  id_tienda: "SEDE_PRINCIPAL"
+  id_terminal: "CAJA_01"
+  serie_caja: "BC3S"            # Serie fija asignada a esta caja
+
+# 2. Servidor API Local (Escucha peticiones de Front Retail)
+api_local:
+  host: "127.0.0.1"             # Solo escucha peticiones locales de la misma máquina
+  puerto: 8080
+  timeout_caja_segundos: 2.5    # Tiempo máximo que espera Front Retail antes de caer en contingencia
+
+# 3. Base de Datos (ICGFRONT en caja o RAMSAS en servidor central)
+database:
+  driver: "{SQL Server}"
+  server: "SVRPREMIUMLAB\\ICGMNGER"
+  db_name: "RAMSAS"
+  trusted_connection: "no"
+  uid: "Middleware"
+  pwd: "1234"
+
+# 4. Conexión al Core Fiscal (Simulador Local en 8090 / Nube en Producción)
+core_fiscal:
+  url_base: "http://127.0.0.1:8090/v1"
+  api_key: "CLAVE_SECRETA_ASIGNADA_POR_CORE"
+  timeout_envio_segundos: 2.0   # Timeout síncrono para el evento de caja
+  timeout_bulk_segundos: 15.0   # Timeout holgado para el ciclo periódico
+  # Endpoints de Facturación de Venta
+  endpoint_emision: "/emision"
+  endpoint_reconciliacion: "/reconciliacion"
+  # Endpoints de Documento Soporte (Compras a No Obligados)
+  endpoint_documento_soporte: "/documento-soporte"
+  endpoint_reconciliacion_ds: "/documento-soporte/reconciliacion"
+
+# 5. Compatibilidad legada para ciclo de ventas existente
+ciclo_sincronizacion:
+  habilitado: true
+  intervalo_segundos: 45
+  dias_hacia_atras: 2000
+  limite_facturas_por_ciclo: 50
+
+# 6. Timers y Workers Periódicos Independientes (Arquitectura Modular)
+ciclos_sincronizacion:
+  # Hilo 1: Facturas y Notas de Venta (Caja POS)
+  ventas:
+    habilitado: true
+    intervalo_segundos: 45
+    dias_hacia_atras: 2000
+    limite_por_ciclo: 50
+    series_permitidas: ["BC3S"]
+
+  # Hilo 2: Documento Soporte en Adquisiciones (Servidor Central)
+  # En ICG el DS se identifica por el PREFIJO FISCAL (FACTURASCOMPRASERIESRESOL.SERIEFISCAL1)
+  # con resolución DIAN real, no por la serie interna de compra (NUMSERIE).
+  documento_soporte:
+    habilitado: true
+    intervalo_segundos: 60      # 60s para desarrollo/pruebas locales (en prod: 300s)
+    dias_hacia_atras: 15        # Ventana prudente: evita reprocesar DS históricos
+    limite_por_ciclo: 30
+    prefijos_fiscales: ["DEQ1", "DEQ2", "DEC", "GFDA", "GFDS"]  # Validar con contabilidad
+    series_icg: []              # Opcional: restringir además por NUMSERIE (vacío = todas)
+
+  # Hilo 3: RADIAN - Estampado de CUFE en Facturas de Proveedor (Fase 10)
+  radian_acuse:
+    habilitado: false
+    intervalo_segundos: 900     # Cada 15 minutos
+    dias_hacia_atras: 30
+    limite_por_ciclo: 20
